@@ -1,4 +1,33 @@
-# Liquid Glass Flow Desk
+# Liquid Glass Flow Desk 苹果UI版
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/b6fabbbd-efb6-4162-9948-1c220112f55e" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/8ecf0174-329d-4178-9c61-944c948c3b8c" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/3c21cca8-fd82-4854-ab6d-1322a61d8541" />
+
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/83c508e6-58d4-4579-8f23-f9f99559036f" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/4ed457be-7cca-4665-9e40-678e30a3db77" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/3f5e3cf2-5ba5-4f6d-8f9d-64e8651e6f82" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/dc3c62a1-6dd1-43a9-ac32-d7277f0e4163" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/7b7701a9-3f7b-4c4b-9178-a9c52ce904fe" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/a987e8e0-b65d-4a98-be68-aae1c39debf8" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/f2d6e5eb-6527-46e7-9488-d2683cb0c413" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/3e5913f2-740b-45d7-8df6-f69573a29ed0" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/80304624-a758-4c25-85ce-d7123208c405" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/22d9d5c0-4c83-4d1d-9322-9519d7e3b3c6" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/00c7a1eb-24bf-4eeb-a20b-a44bdae376dc" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/35ddfd75-431d-48e2-9259-190d973885ac" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/89bcc333-7e20-4611-9d85-28a4d941a768" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/612dbfe5-b147-467a-8a50-2657ea2a89c0" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/16fdd2f9-b255-4887-8594-c9d3af071c1f" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/0a82a6f8-881e-4740-89c5-268cd3ba41e9" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/340d99c5-23a8-4d48-916d-fd2b526af34a" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/8658d4be-f7ae-4dcd-9914-4f84426c6558" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/c0f341f6-6a25-4b14-97be-b3573e0a62ec" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/f28a9013-9bd6-42a4-8e9c-c6190983464b" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/894fb7c9-1ff2-4422-ac9b-a0eb27086c09" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/9c008b6a-fa82-482a-a3a9-13f488ae544b" />
+<img width="281" height="314" alt="image" src="https://github.com/user-attachments/assets/4d3b89de-e5fc-4676-9e36-51e5a5fe72e7" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/1d2eb493-715c-4878-8e28-7a5e30a0d7ac" />
+ <img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/3ad8af4e-b4ef-4803-81f6-1336528e5c71" />
 
 多交易所现货 / 合约参考终端。
 
