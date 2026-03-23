@@ -1,0 +1,48 @@
+{
+  "catalog_coin": "BTC",
+  "preset_coin": "BTC",
+  "custom_coin": "BTC",
+  "overview_coins": [
+    "BTC"
+  ],
+  "selected_exchange": "binance",
+  "interval": "1h",
+  "top_orderbook_scope_mode": "\u5f53\u524d\u4ea4\u6613\u6240",
+  "top_orderbook_market_mode": "\u5408\u7ea6",
+  "performance_mode": "\u6807\u51c6",
+  "hyperliquid_address_source": "\u624b\u52a8\u8f93\u5165",
+  "hyperliquid_address": "",
+  "hyperliquid_address_lookback_hours": 24,
+  "hyperliquid_realtime_enabled": true,
+  "hyperliquid_watch_labels": [
+    "\u5b98\u65b9\u793a\u4f8b\u4e3b\u8d26\u6237",
+    "\u5b98\u65b9\u793a\u4f8b\u91d1\u5e93 Leader",
+    "\u5b98\u65b9\u793a\u4f8b\u91d1\u5e93 Follower"
+  ],
+  "custom_hyperliquid_pool_entries": [],
+  "alert_confirm_after": 3,
+  "alert_cooldown_minutes": 15,
+  "browser_min_level": "\u5f31",
+  "telegram_min_level": "\u5f3a",
+  "active_view": "\u9996\u9875\u603b\u89c8",
+  "lab_mode": "\u603b\u89c8",
+  "exchange_scope_mode": "\u5168\u90e8\u4ea4\u6613\u6240",
+  "liquidation_archive_window": "\u6700\u8fd1 4 \u5c0f\u65f6",
+  "overview_mode": "\u5b8c\u6574",
+  "desk_mode": "\u5b8c\u6574",
+  "deep_market_mode": "\u7efc\u5408\u6df1\u5ea6",
+  "history_sqlite_enabled": true,
+  "auto_archive_enabled": true,
+  "archive_retention_days": 7,
+  "browser_notify_enabled": false,
+  "browser_sound_enabled": false,
+  "telegram_push_enabled": true,
+  "telegram_bot_token": "dpapi:v1:AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAAJCJK1wn-qk6vZOVXpcnT6wAAAAAuAAAATABpAHEAdQBpAGQAIABHAGwAYQBzAHMAIABGAGwAbwB3ACAARABlAHMAawAAABBmAAAAAQAAIAAAAPnhAjN3sU87IXE-_8diADkza6ZdFQ6E9kTaEJee7PmvAAAAAA6AAAAAAgAAIAAAANBglIpcsA53SHKMnvUWTbNBzD3BKSGeyea46kdm4JdBMAAAAGIB81zwNAdJAwbe8M3xpLKaz37kl10WgYp13lvBkH-6CtlCGkv1VMENK2N3F-oEA0AAAABf_cjFhFkGtPS0HpkLwlo0-Uff47kN9BziufiYBc3goP7e-lksdyCsPxyFYzDEUPoM7p0vdRyBR9in3B2Nd3Qq",
+  "telegram_chat_id": "dpapi:v1:AQAAANCMnd8BFdERjHoAwE_Cl-sBAAAAJCJK1wn-qk6vZOVXpcnT6wAAAAAuAAAATABpAHEAdQBpAGQAIABHAGwAYQBzAHMAIABGAGwAbwB3ACAARABlAHMAawAAABBmAAAAAQAAIAAAAJphooADtZgOXre7EkE76Q2G7Xruf7rIK2Ppewgm9OosAAAAAA6AAAAAAgAAIAAAABrCr1MFnMKAAaboNN8UOJ0cKPuFb0Jgd9LcfxZLa9y0EAAAAE7bde9pwiSUqV9X5PmhyFlAAAAAAfsDBXXIRx7mgCxHbGUhfACiTV6jmTkoqOOezMEddThN5uoDACnRxAidQNfX5bbrhaqt68U7AkMoovhBC30Pcg==",
+  "alert_review_window_minutes": 60,
+  "cross_coin_pool": [
+    "BTC",
+    "ETH",
+    "SOL"
+  ]
+}
