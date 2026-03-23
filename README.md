@@ -29,255 +29,168 @@
 <img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/1d2eb493-715c-4878-8e28-7a5e30a0d7ac" />
  <img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/3ad8af4e-b4ef-4803-81f6-1336528e5c71" />
 
-多交易所现货 / 合约参考终端。
+# Liquid Glass Flow Desk
 
-核心目标是把：
+多交易所加密市场终端，聚合现货、合约、OI、Funding、爆仓、盘口、逐笔成交和多空情绪数据，用于本地研究、监控和交易观察。
 
-- 多交易所实时行情
-- 现货 / 合约对照
-- OI / Funding / 多空比 / 爆仓 / 大额成交
-- 本地历史、事件回放、告警解释
+当前主线架构为：
 
-放到同一套可交互终端里。
+- `FastAPI + 原生前端 SPA + 本地 runtime manager`
+- 保留 `Streamlit` 旧版工作台作为 legacy 入口
 
-## 这是什么架构
+适合的使用场景：
 
-当前项目是 **双栈并存架构**：
+- 多交易所市场监控
+- 多币种对比研究
+- 爆仓 / 流动性 / OI / Funding 观察
+- 本地量化研究台与交易辅助工作台
 
-- 旧栈：`Streamlit` 单体应用
-- 新栈：`FastAPI + 本地运行时管理器 + 原生前端 SPA`
+## 功能概览
 
-更准确地说，它是一个：
+支持的核心能力：
 
-- **本地状态型后端**
-- **带共享实时层的多交易所数据终端**
-- **带 SQLite 历史库和本地归档的分析系统**
+- 多交易所行情聚合：Binance、Bybit、OKX、Hyperliquid、Bitget、Gate、HTX
+- 现货 / 合约双市场观察
+- OI、Funding、Basis、Lead/Lag、多空比、盘口质量、逐笔成交
+- 实时爆仓流、爆仓价带图、热力图、联动观察
+- 监控台、多币种工作台、执行台、预警中心、盘口中心、历史回放
+- 本地 SQLite 历史存储与归档
 
-而不是纯静态网站，也不是标准无状态 BFF。
-
-## 核心组成
-
-### 1. API / Web 入口
-
-- [api_server.py](/E:/Codex/ex/api_server.py)
-  FastAPI 入口，负责：
-  - HTTP API
-  - SSE / WebSocket 推送
-  - 静态前端挂载
-  - runtime manager 启动与关闭
-
-- [web/index.html](/E:/Codex/ex/web/index.html)
-- [web/app_main.js](/E:/Codex/ex/web/app_main.js)
-- [web/app_shared.js](/E:/Codex/ex/web/app_shared.js)
-- [web/app_views.js](/E:/Codex/ex/web/app_views.js)
-- [web/styles.css](/E:/Codex/ex/web/styles.css)
-
-这是现在主要使用的新前端。
-
-### 2. 运行时中枢
-
-- [market_runtime.py](/E:/Codex/ex/market_runtime.py)
-
-这是项目的中台。它负责：
-
-- coin session 生命周期
-- payload 生成
-- 本地缓存
-- 预热 / 预计算
-- 参考层 / 监控层 / 告警层 / 执行层
-- 历史读取与回退
-
-主要对象：
-
-- `MarketRuntimeSession`
-- `MarketRuntimeManager`
-
-### 3. 数据源层
-
-- [exchanges.py](/E:/Codex/ex/exchanges.py)
-
-统一封装各交易所 REST：
-
-- Binance
-- Bybit
-- OKX
-- Hyperliquid
-- Bitget
-- Gate
-- HTX
-
-负责：
-
-- snapshot
-- candles
-- trades
-- OI
-- liquidation
-- 多空比 / 情绪类公开接口
-- 交易所请求健康、冷却、退避
-
-### 4. 实时层
-
-- [realtime.py](/E:/Codex/ex/realtime.py)
-
-负责：
-
-- WebSocket
-- sampler
-- 共享实时 hub
-- 逐笔成交 / 爆仓 / 深度 / 快照
-- 地址模式流
-
-当前已经是“**共享连接 + 部分共享结构化解析**”架构，不再是每个 session 各起一套完整实时链路。
-
-### 5. 分析层
-
-- [analytics.py](/E:/Codex/ex/analytics.py)
-
-负责：
-
-- DataFrame 组装
-- Plotly 图表
-- 指标、评分、参考层、结论层
-- 多空比、情绪、执行质量、市场结构分析
-
-### 6. 历史与归档层
-
-- [storage.py](/E:/Codex/ex/storage.py)
-
-负责：
-
-- SQLite 本地历史库
-- archive 归档
-- 热冷分层
-- 聚合副表
-- 历史查询 facade
-
-本地数据目录：
-
-- [`.terminal_data/terminal_history.sqlite3`](/E:/Codex/ex/.terminal_data/terminal_history.sqlite3)
-- [`.terminal_data/archive`](/E:/Codex/ex/.terminal_data/archive)
-- [`.terminal_data/liquidations`](/E:/Codex/ex/.terminal_data/liquidations)
-
-### 7. 旧版页面
-
-- [app.py](/E:/Codex/ex/app.py)
-
-这是旧版 Streamlit 单体工作台，仍然可运行，但现在项目主线已经偏向 FastAPI + SPA。
-
-## 当前数据流
-
-可以把整套系统理解成这条链：
-
-1. 前端发起 `overview / monitor / alerts / execution / history` 请求
-2. `api_server.py` 把请求交给 `MarketRuntimeManager`
-3. `MarketRuntimeSession` 优先读取：
-   - 实时层共享状态
-   - 本地 cache
-   - 本地历史
-4. 缺口部分再由后台预热或交易所 adapter 补齐
-5. `analytics.py` 负责把原始数据变成 frame / figure / card
-6. `storage.py` 把快照、事件、质量点、OI、bars、transport 写入本地
-7. SSE / WebSocket 只负责把 payload 推到前端
-
-## 当前主要能力
-
-### 市场支持
-
-- 合约
-- 现货
-- 现货 / 合约对照
-- 多交易所对照
-- 多币种对照
-
-### 数据能力
-
-- Snapshot
-- Depth / Orderbook
-- Trades / Tape
-- Liquidations
-- OI
-- Funding
-- Basis
-- 多空比
-- 合约情绪
-- 现货参考层 / 合约参考层 / 综合结论层
-
-### 工作台能力
+主要视图：
 
 - 总览
 - 信息榜
-- 监控
+- 监控台
 - 多币种
-- 执行层
-- 告警中心
+- 执行台
+- 现货/合约
+- 深度
+- 爆仓
+- 预警
+- 盘口
+- 地址
 - 历史
-- 调试 / 健康页
-- AI 副驾驶与单事件 drill-down
+- 实验室
+- 调试
+- 健康
+- 旧版工作台
 
-### 本地持久化能力
+## 架构说明
 
-- market snapshots
-- market events
-- orderbook quality points
-- signal events
-- oi points
-- market bars 1m
-- transport state
-- liquidation archive
+### 1. API 与前端入口
 
-## 项目结构
+- `api_server.py`
+  FastAPI 入口，负责 HTTP API、SSE / WebSocket、静态资源挂载、runtime 生命周期管理。
+- `web/index.html`
+- `web/app.js`
+- `web/app_main.js`
+- `web/app_shared.js`
+- `web/app_views.js`
+- `web/styles.css`
+
+### 2. 运行时核心
+
+- `market_runtime.py`
+
+项目核心文件，负责：
+
+- 单币种 runtime session
+- 多币种 manager 协调
+- payload 组装
+- 缓存与预热
+- 监控 / 总览 / 爆仓 / 预警 / 执行台等主要业务逻辑
+
+### 3. 交易所与实时层
+
+- `exchanges.py`
+  统一封装各交易所 REST 接口。
+- `realtime.py`
+  实时流、共享 hub、逐笔成交、爆仓、盘口与采样状态。
+
+### 4. 分析与存储
+
+- `analytics.py`
+  DataFrame、评分、图表和分析逻辑。
+- `storage.py`
+  SQLite 历史库、归档、事件落地和历史查询。
+
+### 5. 旧版工作台
+
+- `app.py`
+
+保留旧版 Streamlit 入口，方便对照和兼容使用，但当前主线已转向 FastAPI + SPA。
+
+## 数据流
+
+系统主要数据流如下：
+
+1. 前端请求 `overview / monitor / multicoin / execution / liquidations / alerts`
+2. `api_server.py` 将请求转交给 `MarketRuntimeManager`
+3. `market_runtime.py` 优先读取：
+   - 会话内实时状态
+   - 本地缓存
+   - 本地历史
+4. 缺口数据再由：
+   - `realtime.py`
+   - `exchanges.py`
+   - 本地归档 / SQLite
+   回补
+5. `analytics.py` 把原始数据转成卡片、表格、图表和面板
+6. 结果通过 HTTP / SSE / WebSocket 推给前端
+
+## 目录结构
 
 ```text
-E:\Codex\ex
-├─ api_server.py        # FastAPI API + SSE/WS + 静态前端挂载
-├─ market_runtime.py    # 运行时中枢、payload、预热、缓存
-├─ realtime.py          # 共享实时层、WS、sampler、地址流
-├─ exchanges.py         # 交易所 REST 适配
-├─ analytics.py         # 指标、图表、DataFrame、评分
-├─ storage.py           # SQLite / archive / 聚合 / 热冷分层
-├─ api_models.py        # FastAPI response model
-├─ models.py            # 数据模型
-├─ legacy_history.py    # 旧历史页辅助
-├─ legacy_health.py     # 旧健康页辅助
-├─ legacy_address.py    # 旧地址页辅助
-├─ app.py               # 旧版 Streamlit 单体应用
-├─ web/
-│  ├─ index.html
-│  ├─ app_main.js
-│  ├─ app_shared.js
-│  ├─ app_views.js
-│  └─ styles.css
-└─ .terminal_data/      # 本地数据库、归档、事件文件
+.
+├── api_server.py
+├── market_runtime.py
+├── realtime.py
+├── exchanges.py
+├── analytics.py
+├── storage.py
+├── api_models.py
+├── models.py
+├── request_schema.py
+├── app.py
+├── tests/
+├── web/
+│   ├── index.html
+│   ├── app.js
+│   ├── app_main.js
+│   ├── app_shared.js
+│   ├── app_views.js
+│   └── styles.css
+└── .terminal_data/
 ```
 
-## 运行方式
+## 环境要求
 
-### 依赖
+建议环境：
+
+- Python 3.9+
+- Windows / Linux / VPS 均可
+
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-当前核心依赖：
+如果你之前遇到 `numpy 2.x` 与 `pandas / pyarrow` 的兼容问题，请直接使用仓库里的依赖版本约束重新安装。
 
-- `fastapi`
-- `uvicorn`
-- `requests`
-- `pandas`
-- `plotly`
-- `websocket-client`
-- `streamlit`
+## 启动方式
 
-### 启动新前端 + API
+### 启动新版前端 + API
 
 ```bash
 uvicorn api_server:app --host 0.0.0.0 --port 8000
 ```
 
-访问：
+打开：
 
-- [http://127.0.0.1:8000](http://127.0.0.1:8000)
+```text
+http://127.0.0.1:8000
+```
 
 ### 启动旧版 Streamlit
 
@@ -285,140 +198,103 @@ uvicorn api_server:app --host 0.0.0.0 --port 8000
 streamlit run app.py
 ```
 
-## 本地状态与数据
+## 常用接口
 
-这个项目**不是无状态后端**。
+主要 API：
+
+- `/api/overview`
+- `/api/overview-rich`
+- `/api/monitor`
+- `/api/multicoin`
+- `/api/execution`
+- `/api/liquidations`
+- `/api/alerts`
+- `/api/orderbook-center`
+- `/api/health`
+- `/api/debug/runtime-manager`
+
+实时推送：
+
+- `/api/stream/liquidations`
+- `/api/stream/alerts`
+- `/api/stream/monitor/*`
+- `/ws/overview`
+- `/ws/liquidations`
+- `/ws/alerts`
+
+## 本地存储
+
+项目不是无状态后端。
 
 它会在本地维护：
 
 - runtime cache
-- 共享实时状态
-- 后台预热线程
+- 会话内实时状态
+- 预热缓存
 - SQLite 历史库
-- parquet / csv.gz 归档
-- UI preferences
+- 爆仓归档
+- UI 偏好与面板布局
 
-因此它非常适合：
+常见本地目录：
 
-- 本地桌面工作台
-- 自己的服务器 / VPS
-- 常驻进程
+- `.terminal_data/`
+- `.terminal_data/archive/`
+- `.terminal_data/liquidations/`
 
-而不适合“短生命周期、频繁冷启动”的 serverless 运行方式。
+## 开发说明
 
-## 能不能直接上 Vercel
+建议优先关注这些文件：
 
-### 结论
+- `market_runtime.py`
+- `api_server.py`
+- `realtime.py`
+- `web/app_views.js`
+- `web/app_shared.js`
 
-**不能直接把这整套系统原样上 Vercel。**
+如果你要新增或修复功能，通常入口可以这样找：
 
-### 原因
+- 页面表现问题：`web/`
+- 接口返回问题：`api_server.py`
+- 数据聚合 / 面板内容问题：`market_runtime.py`
+- 交易所抓数问题：`exchanges.py`
+- 实时流问题：`realtime.py`
 
-因为这套项目依赖以下能力，而它们都不适合 Vercel 的典型 serverless 形态：
+## 注意事项
 
-1. **长连接和常驻状态**
+- 部分交易所公开接口存在限流、样本不完整或字段口径差异。
+- Funding、OI、多空比等指标在不同交易所口径并不完全一致，项目内部会做归一和代理补全。
+- 某些面板在冷启动时可能先进入预热状态，随后再补齐数据。
+- Hyperliquid 等来源的部分爆仓 / 情绪数据能力受官方公开接口限制。
 
-- WebSocket / SSE
-- shared realtime hub
-- runtime session
-- 后台 precompute worker
+## 测试与校验
 
-2. **本地持久化**
+仓库包含：
 
-- SQLite
-- 本地 archive
-- liquidation 文件归档
-- UI preferences
+- `tests/`
+- 多个 `smoke_*` 回归脚本
 
-3. **长生命周期内存状态**
+基础校验示例：
 
-- cache
-- source revision
-- fanout topic
-- background warm jobs
+```bash
+python -m py_compile api_server.py market_runtime.py realtime.py exchanges.py storage.py
+node --check web/app.js
+node --check web/app_main.js
+node --check web/app_shared.js
+node --check web/app_views.js
+```
 
-4. **本地线程与后台任务**
+## 许可与说明
 
-- ThreadPoolExecutor
-- precompute thread
-- monitor fetch executor
-- cache warm jobs
+本仓库更偏向个人研究终端 / 本地工作台，不构成投资建议。
 
-Vercel 更适合：
+如果你准备继续扩展本项目，推荐下一步补齐：
 
-- 静态前端
-- 轻 API
-- 无状态函数
+- 部署说明
+- 环境变量说明
+- 截图与 GIF 演示
+- API 参数表
+- 交易所数据口径说明
 
-而你这个项目是：
-
-- 有状态
-- 本地落盘
-- 长连接
-- 后台线程
-- 长期运行
-
-### 哪些部分可以上 Vercel
-
-如果你只是想“挂一个网页壳子”，有两种可行拆法：
-
-#### 方案 A：只把前端静态页放 Vercel
-
-- `web/` 前端静态文件可部署
-- 但必须把 API 改成独立后端
-- 前端通过公网访问你自己的 FastAPI 服务
-
-这个方案的前提是：
-
-- 后端改成单独部署在 VPS / 云主机 / Docker / Railway / Fly.io / Render / 自建服务器
-
-#### 方案 B：前后端彻底拆分
-
-把当前系统拆成：
-
-- `frontend`
-- `stateful backend`
-- `market collector / realtime worker`
-- `database / archive`
-
-这就不是“直接上 Vercel”，而是一次结构性改造。
-
-### 更合适的部署方式
-
-如果你想线上常驻运行，优先建议：
-
-- Windows / Linux 自建机器
-- VPS
-- Docker + 持久卷
-- 一台常驻云主机
-
-最适合的形态是：
-
-- `uvicorn + systemd/supervisor/pm2/nssm`
-- 本地磁盘保留 `.terminal_data`
-
-## 当前架构优点
-
-- 本地状态丰富，适合做交易工作台
-- 共享实时层已经有明显性能优化
-- 有历史库和归档，支持复盘
-- 前后端已经分离，新栈比旧 Streamlit 更容易继续扩展
-
-## 当前架构边界
-
-- `market_runtime.py` 仍然偏大
-- fanout 还不是纯事件总线最终形态
-- realtime 共享层还没做到所有交易所、所有消息全覆盖
-- 全站参数 schema 和字段 schema 还在收口中
-
-## 如果继续演进，最值得做什么
-
-当前最值钱的后续方向是：
-
-1. 把 fanout 继续推进成真正的数据驱动推送
-2. 把 realtime 剩余未共享 handler 继续并入共享结构化总线
-3. 继续收紧参数 schema 和 canonical 字段
-4. 继续把历史图板切到“聚合秒开 + 细节按需回读”
 
 ## License
 
