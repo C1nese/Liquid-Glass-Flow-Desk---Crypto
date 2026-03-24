@@ -258,13 +258,35 @@ LIQUIDATION_ARCHIVE_WINDOWS = (
     {"key": "today", "label": "今天"},
     {"key": "all", "label": "全部本地缓存"},
 )
-LIQUIDATION_PRICE_MAP_WINDOWS: Dict[str, int] = {"5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+LIQUIDATION_PRICE_MAP_WINDOWS: Dict[str, int] = {
+    "5m": 5,
+    "15m": 15,
+    "30m": 30,
+    "1h": 60,
+    "2h": 120,
+    "4h": 240,
+    "12h": 720,
+    "24h": 1440,
+    "7d": 10080,
+    "30d": 43200,
+}
 LIQUIDATION_OI_RANK_WINDOWS: Dict[str, int] = {"15m": 15, "1h": 60, "4h": 240, "12h": 720, "24h": 1440, "1w": 10080}
 LIQUIDATION_VISUAL_MODEL_OPTIONS = (
     {"key": "realized", "label": "模型1 · 真实爆仓价带"},
     {"key": "model3", "label": "模型3 · 升级算法版（更聪明）"},
 )
-LIQUIDATION_MODEL3_TIME_BUCKETS: Dict[str, int] = {"5m": 30, "15m": 45, "1h": 90, "4h": 72, "1d": 144}
+LIQUIDATION_MODEL3_TIME_BUCKETS: Dict[str, int] = {
+    "5m": 30,
+    "15m": 45,
+    "30m": 60,
+    "1h": 90,
+    "2h": 96,
+    "4h": 96,
+    "12h": 120,
+    "24h": 144,
+    "7d": 168,
+    "30d": 180,
+}
 LIQUIDATION_MODEL3_PRICE_BUCKETS = 56
 HYPERLIQUID_ADDRESS_PRESETS = {
     "手动输入": "",
@@ -309,9 +331,19 @@ def _normalize_liquidation_visual_model(value: Any) -> str:
 
 
 def _normalize_liquidation_visual_window(value: Any) -> str:
-    normalized = str(value or "1d").strip().lower()
-    normalized = {"24h": "1d", "12h": "4h", "1w": "1d", "7d": "1d"}.get(normalized, normalized)
-    return normalized if normalized in LIQUIDATION_PRICE_MAP_WINDOWS else "1d"
+    normalized = str(value or "24h").strip().lower()
+    normalized = {
+        "1d": "24h",
+        "24hr": "24h",
+        "1w": "7d",
+        "7day": "7d",
+        "7days": "7d",
+        "1m": "30d",
+        "1mo": "30d",
+        "30day": "30d",
+        "30days": "30d",
+    }.get(normalized, normalized)
+    return normalized if normalized in LIQUIDATION_PRICE_MAP_WINDOWS else "24h"
 
 
 def _normalize_liquidation_oi_rank_window(value: Any) -> str:
@@ -3035,7 +3067,7 @@ def _build_realized_liquidation_price_map_dataset(
     exchange_options = [{"key": key, "label": EXCHANGE_TITLE_MAP.get(key, key.title())} for key in normalized_exchange_keys]
     empty_payload = {
         "windows": windows,
-        "default_window": "1d",
+        "default_window": "24h",
         "default_coin": normalized_focus_coin,
         "default_exchange": "all",
         "coins": [normalized_focus_coin] if normalized_focus_coin else [],
@@ -3121,7 +3153,7 @@ def _build_realized_liquidation_price_map_dataset(
 
     return {
         "windows": windows,
-        "default_window": "1d",
+        "default_window": "24h",
         "default_coin": normalized_focus_coin or (coins[0] if coins else ""),
         "default_exchange": "all",
         "coins": coins,
@@ -3672,12 +3704,17 @@ def _build_statistical_liquidation_heatmap_dataset(
     step_ms = {
         "5m": 10_000,
         "15m": 15_000,
+        "30m": 30_000,
         "1h": 30_000,
+        "2h": 60_000,
         "4h": 120_000,
-        "1d": 600_000,
+        "12h": 300_000,
+        "24h": 600_000,
+        "7d": 3_600_000,
+        "30d": 14_400_000,
     }.get(normalized_window, 300_000)
     since_ms = now_ms - window_minutes * 60 * 1000
-    lookback_candles = {"5m": 30, "15m": 48, "1h": 84, "4h": 144, "1d": 420}.get(normalized_window, 120)
+    lookback_candles = {"5m": 30, "15m": 48, "30m": 60, "1h": 84, "2h": 96, "4h": 144, "12h": 168, "24h": 420, "7d": 192, "30d": 240}.get(normalized_window, 120)
     history_buffer_ms = lookback_candles * step_ms
     time_values = list(range(since_ms + step_ms, now_ms + 1, step_ms))
     if not time_values:
@@ -4139,50 +4176,113 @@ def _build_statistical_liquidation_heatmap_dataset(
     display_interval_minutes = {
         "5m": 1,
         "15m": 1,
+        "30m": 1,
         "1h": 2,
+        "2h": 3,
         "4h": 5,
-        "1d": 15,
+        "12h": 15,
+        "24h": 15,
+        "7d": 60,
+        "30d": 240,
     }.get(normalized_window, 5)
-    merged_price_candles: List[Dict[str, Any]] = []
-    candle_buckets: Dict[int, Dict[str, List[float]]] = {}
+    display_interval_ms = max(60_000, int(display_interval_minutes * 60_000))
+    display_exchange_order: List[str] = []
+    if normalized_exchange not in {"", "all"} and normalized_exchange in selected_exchange_keys:
+        display_exchange_order.append(normalized_exchange)
+    for preferred_exchange in ["binance", "bybit", "okx", "hyperliquid", "bitget", "gate", "htx"]:
+        if preferred_exchange in selected_exchange_keys and preferred_exchange not in display_exchange_order:
+            display_exchange_order.append(preferred_exchange)
     for exchange_name in selected_exchange_keys:
-        display_candles = prepared_candles.get(exchange_name, [])
-        trade_candles = _aggregate_trades_to_candles(
-            [trade for trade in (trade_rows_by_exchange or {}).get(exchange_name, []) if int(trade.timestamp_ms or 0) >= since_ms],
-            interval_minutes=display_interval_minutes,
-        )
-        if len(trade_candles) >= max(4, min(24, len(display_candles) // 2 or 4)):
-            display_candles = trade_candles
-        for candle in display_candles:
+        if exchange_name not in display_exchange_order:
+            display_exchange_order.append(exchange_name)
+
+    def _resample_display_candles(candles: List[Candle]) -> List[Dict[str, Any]]:
+        buckets: Dict[int, Dict[str, Optional[float]]] = {}
+        for candle in sorted(candles, key=lambda item: int(item.timestamp_ms or 0)):
             candle_ts = int(candle.timestamp_ms or 0)
             if candle_ts < since_ms or candle_ts > now_ms:
                 continue
-            entry = candle_buckets.setdefault(candle_ts, {"open": [], "high": [], "low": [], "close": []})
-            for key, value in (
-                ("open", _payload_float(candle.open)),
-                ("high", _payload_float(candle.high)),
-                ("low", _payload_float(candle.low)),
-                ("close", _payload_float(candle.close)),
-            ):
-                if value not in (None, 0.0):
-                    entry[key].append(float(value))
-    for candle_ts in sorted(candle_buckets):
-        entry = candle_buckets.get(candle_ts) or {}
-        if not all(entry.get(key) for key in ("open", "high", "low", "close")):
-            continue
-        merged_price_candles.append(
-            {
-                "timestamp_ms": candle_ts,
-                "label": pd.to_datetime(candle_ts, unit="ms", utc=True).tz_convert("Europe/Rome").strftime(
-                    "%m-%d %H:%M" if window_minutes >= 720 else "%H:%M"
-                ),
-                "open": float(statistics.median(entry["open"])),
-                "high": float(max(entry["high"])),
-                "low": float(min(entry["low"])),
-                "close": float(statistics.median(entry["close"])),
-            }
-        )
-    minimum_display_candles = {"5m": 20, "15m": 36, "1h": 72, "4h": 72, "1d": 120}.get(normalized_window, 24)
+            bucket_ts = (candle_ts // display_interval_ms) * display_interval_ms
+            entry = buckets.setdefault(bucket_ts, {"open": None, "high": None, "low": None, "close": None})
+            open_value = _payload_float(candle.open)
+            high_value = _payload_float(candle.high)
+            low_value = _payload_float(candle.low)
+            close_value = _payload_float(candle.close)
+            if open_value not in (None, 0.0) and entry["open"] is None:
+                entry["open"] = float(open_value)
+            if high_value not in (None, 0.0):
+                entry["high"] = float(high_value) if entry["high"] is None else max(float(entry["high"]), float(high_value))
+            if low_value not in (None, 0.0):
+                entry["low"] = float(low_value) if entry["low"] is None else min(float(entry["low"]), float(low_value))
+            if close_value not in (None, 0.0):
+                entry["close"] = float(close_value)
+        rows: List[Dict[str, Any]] = []
+        for candle_ts in sorted(buckets):
+            entry = buckets.get(candle_ts) or {}
+            if any(entry.get(key) is None for key in ("open", "high", "low", "close")):
+                continue
+            rows.append(
+                {
+                    "timestamp_ms": candle_ts,
+                    "label": pd.to_datetime(candle_ts, unit="ms", utc=True).tz_convert("Europe/Rome").strftime(
+                        "%m-%d %H:%M" if window_minutes >= 720 else "%H:%M"
+                    ),
+                    "open": float(entry["open"]),
+                    "high": float(entry["high"]),
+                    "low": float(entry["low"]),
+                    "close": float(entry["close"]),
+                }
+            )
+        return rows
+
+    merged_price_candles: List[Dict[str, Any]] = []
+    for exchange_name in display_exchange_order:
+        source_candles = _resample_display_candles(prepared_candles.get(exchange_name, []))
+        if source_candles:
+            merged_price_candles = source_candles
+            break
+    candle_buckets: Dict[int, Dict[str, List[float]]] = {}
+    if not merged_price_candles:
+        for exchange_name in selected_exchange_keys:
+            display_candles = prepared_candles.get(exchange_name, [])
+            trade_candles = _aggregate_trades_to_candles(
+                [trade for trade in (trade_rows_by_exchange or {}).get(exchange_name, []) if int(trade.timestamp_ms or 0) >= since_ms],
+                interval_minutes=display_interval_minutes,
+            )
+            if len(trade_candles) >= max(4, min(24, len(display_candles) // 2 or 4)):
+                display_candles = trade_candles
+            for candle in display_candles:
+                candle_ts = int(candle.timestamp_ms or 0)
+                if candle_ts < since_ms or candle_ts > now_ms:
+                    continue
+                entry = candle_buckets.setdefault(candle_ts, {"open": [], "high": [], "low": [], "close": []})
+                for key, value in (
+                    ("open", _payload_float(candle.open)),
+                    ("high", _payload_float(candle.high)),
+                    ("low", _payload_float(candle.low)),
+                    ("close", _payload_float(candle.close)),
+                ):
+                    if value not in (None, 0.0):
+                        entry[key].append(float(value))
+        for candle_ts in sorted(candle_buckets):
+            entry = candle_buckets.get(candle_ts) or {}
+            if not all(entry.get(key) for key in ("open", "high", "low", "close")):
+                continue
+            merged_price_candles.append(
+                {
+                    "timestamp_ms": candle_ts,
+                    "label": pd.to_datetime(candle_ts, unit="ms", utc=True).tz_convert("Europe/Rome").strftime(
+                        "%m-%d %H:%M" if window_minutes >= 720 else "%H:%M"
+                    ),
+                    "open": float(statistics.median(entry["open"])),
+                    "high": float(max(entry["high"])),
+                    "low": float(min(entry["low"])),
+                    "close": float(statistics.median(entry["close"])),
+                }
+            )
+    # Keep model3 display candles stable across refreshes/windows.
+    # Only synthesize when the real OHLC sample is genuinely too sparse to read.
+    minimum_display_candles = {"5m": 4, "15m": 8, "30m": 10, "1h": 12, "2h": 14, "4h": 16, "12h": 20, "24h": 24, "7d": 28, "30d": 36}.get(normalized_window, 8)
     if len(merged_price_candles) < minimum_display_candles:
         valid_path_points = [
             (int(timestamp_ms), float(price_value))
@@ -4190,35 +4290,29 @@ def _build_statistical_liquidation_heatmap_dataset(
             if price_value not in (None, 0.0)
         ]
         if valid_path_points:
-            target_candle_count = {"5m": 30, "15m": 60, "1h": 120, "4h": 120, "1d": 144}.get(normalized_window, 48)
-            group_size = max(1, int(len(valid_path_points) / max(1, min(target_candle_count, len(valid_path_points)))))
+            interval_ms = max(60_000, int(display_interval_minutes * 60_000))
+            path_buckets: Dict[int, List[float]] = {}
+            for timestamp_ms, price_value in valid_path_points:
+                bucket_ts = (int(timestamp_ms) // interval_ms) * interval_ms
+                path_buckets.setdefault(bucket_ts, []).append(float(price_value))
             synthesized_candles: List[Dict[str, Any]] = []
             overall_path_prices = [price for _, price in valid_path_points]
             overall_span = max(overall_path_prices) - min(overall_path_prices) if overall_path_prices else 0.0
             previous_close: Optional[float] = None
-            for start in range(0, len(valid_path_points), group_size):
-                chunk = valid_path_points[start : start + group_size]
-                if not chunk:
+            for candle_ts in sorted(path_buckets):
+                chunk_prices = path_buckets.get(candle_ts) or []
+                if not chunk_prices:
                     continue
-                chunk_prices = [price for _, price in chunk]
                 open_price = float(previous_close if previous_close is not None else chunk_prices[0])
                 close_price = float(chunk_prices[-1])
                 high_price = float(max(chunk_prices))
                 low_price = float(min(chunk_prices))
                 reference_scale = max(abs(float(reference_price)), abs(close_price), 1.0)
-                wick_pad = max((high_price - low_price) * 0.24, reference_scale * 0.00055, overall_span * 0.012, 0.02)
-                body_pad = max(reference_scale * 0.00024, overall_span * 0.0035, 0.015)
-                if abs(close_price - open_price) < body_pad:
-                    anchor_price = float(previous_close if previous_close is not None else open_price)
-                    if close_price > anchor_price:
-                        open_price = close_price - body_pad
-                    elif close_price < anchor_price:
-                        open_price = close_price + body_pad
-                    else:
-                        open_price = close_price - body_pad * 0.5
-                high_price = max(high_price, open_price, close_price) + wick_pad * 0.38
-                low_price = min(low_price, open_price, close_price) - wick_pad * 0.38
-                candle_ts = int(chunk[-1][0])
+                wick_pad = max((high_price - low_price) * 0.18, reference_scale * 0.00022, overall_span * 0.0035, 0.00001)
+                if abs(close_price - open_price) < max(reference_scale * 0.00005, overall_span * 0.0008, 0.00001):
+                    open_price = float(chunk_prices[0])
+                high_price = max(high_price, open_price, close_price) + wick_pad * 0.18
+                low_price = min(low_price, open_price, close_price) - wick_pad * 0.18
                 synthesized_candles.append(
                     {
                         "timestamp_ms": candle_ts,
@@ -4232,7 +4326,45 @@ def _build_statistical_liquidation_heatmap_dataset(
                     }
                 )
                 previous_close = close_price
-            if len(synthesized_candles) > len(merged_price_candles):
+            real_candle_count = len(merged_price_candles)
+            diversity_score = 1.0
+            unique_close_ratio = 1.0
+            active_candle_ratio = 1.0
+            max_flat_streak = 1
+            if merged_price_candles:
+                rounded_closes = [
+                    round(float(item.get("close") or 0.0), 8)
+                    for item in merged_price_candles
+                    if item.get("close") not in (None, 0.0)
+                ]
+                unique_close_ratio = (
+                    len(set(rounded_closes)) / max(len(rounded_closes), 1)
+                    if rounded_closes
+                    else 0.0
+                )
+                flat_streak = 1
+                max_flat_streak = 1
+                for index in range(1, len(rounded_closes)):
+                    if abs(rounded_closes[index] - rounded_closes[index - 1]) <= max(abs(rounded_closes[index]) * 0.000002, 0.0000001):
+                        flat_streak += 1
+                    else:
+                        flat_streak = 1
+                    max_flat_streak = max(max_flat_streak, flat_streak)
+                active_candle_ratio = sum(
+                    1
+                    for item in merged_price_candles
+                    if abs(float(item.get("high") or 0.0) - float(item.get("low") or 0.0))
+                    >= max(abs(float(item.get("close") or reference_price)) * 0.00008, overall_span * 0.0012, 0.00001)
+                ) / max(real_candle_count, 1)
+                diversity_score = max(unique_close_ratio, active_candle_ratio)
+            if (
+                not merged_price_candles
+                or real_candle_count < max(4, minimum_display_candles // 2)
+                or diversity_score < 0.34
+                or max_flat_streak >= max(4, real_candle_count // 3)
+                or unique_close_ratio < 0.55
+                or active_candle_ratio < 0.3
+            ):
                 merged_price_candles = synthesized_candles
 
     return {
@@ -9317,8 +9449,9 @@ class MarketRuntimeSession:
                 narrowed = working[score_series <= 0.0].reset_index(drop=True)
             if not narrowed.empty:
                 working = narrowed
+        working = self._prune_sparse_display_rows(working)
         if working.empty:
-            return frame.head(min(6, len(frame))).reset_index(drop=True)
+            return working
         return working.reset_index(drop=True)
 
     def _build_multicoin_liquidation_linkage_frame(
@@ -10020,6 +10153,7 @@ class MarketRuntimeSession:
             sync_on_miss=True,
         )
         working_frame = workspace.get("working_frame") if isinstance(workspace.get("working_frame"), pd.DataFrame) else pd.DataFrame(columns=["币种"])
+        working_frame = self._prune_sparse_display_rows(working_frame)
         selected_coins = list(workspace.get("selected_coins") or [])
         liquidation_frame = workspace.get("liquidation_frame") if isinstance(workspace.get("liquidation_frame"), pd.DataFrame) else pd.DataFrame()
         divergence_frame = workspace.get("divergence_frame") if isinstance(workspace.get("divergence_frame"), pd.DataFrame) else pd.DataFrame()
@@ -12318,6 +12452,94 @@ class MarketRuntimeSession:
             filtered_overview = overview_frame.copy()
         return filtered_overview
 
+    def _prune_sparse_display_rows(
+        self,
+        frame: pd.DataFrame,
+        *,
+        extra_numeric_columns: Optional[List[str]] = None,
+    ) -> pd.DataFrame:
+        working = (
+            canonicalize_market_frame_columns(frame.copy())
+            if isinstance(frame, pd.DataFrame)
+            else pd.DataFrame()
+        )
+        if working.empty or "币种" not in working.columns:
+            return working
+
+        numeric_columns = [
+            "价格",
+            "5m%",
+            "30m%",
+            "1h%",
+            "4h%",
+            "24h%",
+            "24h成交额",
+            "OI总额",
+            "OI 1h(%)",
+            "OI 4h(%)",
+            "OI 24h(%)",
+            "Funding(bp)",
+            "L/S比",
+            "Spot/OI",
+            "OI变化额",
+            "24h爆仓样本额",
+            "最大偏离(%)",
+            "平均偏离(%)",
+            "事件数",
+            "事件样本额",
+        ]
+        if extra_numeric_columns:
+            numeric_columns.extend([column for column in extra_numeric_columns if column])
+        numeric_columns.extend(
+            [
+                "Binance全市场比",
+                "Binance主动买卖比",
+                "Bybit账户比",
+                "Bybit多头占比(%)",
+                "Bybit空头占比(%)",
+                "OKX合约账户比",
+                "OKX全网账户比",
+                "OKX大户账户比",
+                "OKX大户持仓比",
+                "OKX多头占比(%)",
+                "OKX空头占比(%)",
+                "Bitget账户比",
+                "Bitget多头占比(%)",
+                "Bitget空头占比(%)",
+                "Gate账户比",
+                "Gate多头占比(%)",
+                "Gate空头占比(%)",
+                "HTX账户比",
+                "HTX多头占比(%)",
+                "HTX空头占比(%)",
+            ]
+        )
+
+        valid_mask = pd.Series(False, index=working.index, dtype=bool)
+        for column in dict.fromkeys(numeric_columns):
+            if column not in working.columns:
+                continue
+            valid_mask = valid_mask | pd.to_numeric(working[column], errors="coerce").notna()
+
+        if "状态" in working.columns:
+            degraded_mask = working["状态"].astype(str).fillna("").str.contains("降级|代理|失败|加载", regex=True)
+            if valid_mask.any():
+                working = working[valid_mask | ~degraded_mask].reset_index(drop=True)
+            else:
+                working = working[~degraded_mask].reset_index(drop=True)
+        elif valid_mask.any():
+            working = working[valid_mask].reset_index(drop=True)
+
+        if working.empty:
+            return working
+
+        if "币种" in working.columns:
+            working = (
+                working.drop_duplicates(subset=["币种"], keep="first")
+                .reset_index(drop=True)
+            )
+        return working
+
     def _resolve_overview_quadrant_columns(
         self,
         frame: pd.DataFrame,
@@ -12348,11 +12570,11 @@ class MarketRuntimeSession:
             else pd.DataFrame()
         )
         if aggregate.empty:
-            return working
+            return self._prune_sparse_display_rows(working)
         if working.empty:
-            return aggregate
+            return self._prune_sparse_display_rows(aggregate)
         if "币种" not in working.columns or "币种" not in aggregate.columns:
-            return working
+            return self._prune_sparse_display_rows(working)
 
         def _frame_completeness(frame: pd.DataFrame) -> int:
             if frame.empty:
@@ -12388,7 +12610,7 @@ class MarketRuntimeSession:
             )
         )
         if aggregate_is_clearly_better:
-            return aggregate
+            return self._prune_sparse_display_rows(aggregate)
 
         aggregate_by_coin = aggregate.drop_duplicates(subset=["币种"], keep="first").set_index("币种")
         numeric_columns = {
@@ -12441,7 +12663,7 @@ class MarketRuntimeSession:
                 fallback_selection = fallback_row.get(column)
                 if isinstance(fallback_selection, dict) and (hard_replace or not isinstance(current_selection, dict) or not current_selection):
                     repaired.at[row_index, column] = dict(fallback_selection)
-        return repaired
+        return self._prune_sparse_display_rows(repaired)
 
     def _build_overview_summary_blocks(
         self,
@@ -12911,6 +13133,7 @@ class MarketRuntimeSession:
             if isinstance(summary_content.get("filtered_overview"), pd.DataFrame)
             else scoped_overview
         )
+        repaired_filtered_overview = self._prune_sparse_display_rows(repaired_filtered_overview)
         reference_layers = (
             workspace.get("reference_layers")
             if isinstance(workspace.get("reference_layers"), dict)
@@ -13458,6 +13681,7 @@ class MarketRuntimeSession:
             if isinstance(light_context.get("filtered_overview"), pd.DataFrame)
             else pd.DataFrame()
         )
+        filtered_overview = self._prune_sparse_display_rows(filtered_overview)
         ratio_sentiment_frame = self._multicoin_sentiment_board(
             watch_group,
             normalized_ratio_window,
@@ -13529,6 +13753,7 @@ class MarketRuntimeSession:
                     {"coin": str(row.get("币种") or "").upper().strip()}
                     for _, row in multicoin_sentiment_frame.iterrows()
                 ]
+        multicoin_sentiment_frame = self._prune_sparse_display_rows(multicoin_sentiment_frame)
         signature = {
             "coin": self.coin,
             "exchange_key": exchange_key,
@@ -18600,7 +18825,7 @@ class MarketRuntimeSession:
         map_exchange_keys: Optional[List[str]] = None,
         oi_rank_window: str = "1h",
         visual_model: str = "realized",
-        visual_window: str = "1d",
+        visual_window: str = "24h",
         visual_coin: Optional[str] = None,
         visual_exchange: str = "all",
     ) -> str:
@@ -18674,7 +18899,7 @@ class MarketRuntimeSession:
         map_exchange_keys: Optional[List[str]] = None,
         oi_rank_window: str = "1h",
         visual_model: str = "realized",
-        visual_window: str = "1d",
+        visual_window: str = "24h",
         visual_coin: Optional[str] = None,
         visual_exchange: str = "all",
     ) -> Dict[str, Any]:
@@ -19610,19 +19835,25 @@ class MarketRuntimeSession:
             exchange_keys=normalized_map_exchange_keys,
             reference_rows=contracts_overview_rows,
         )
-        candle_limit = {"5m": 120, "15m": 180, "1h": 240, "4h": 288, "1d": 672}.get(normalized_visual_window, 240)
+        candle_limit = {"5m": 120, "15m": 180, "30m": 180, "1h": 240, "2h": 240, "4h": 288, "12h": 384, "24h": 672, "7d": 336, "30d": 360}.get(normalized_visual_window, 240)
         display_candle_interval = {
             "5m": "1m",
             "15m": "1m",
+            "30m": "1m",
             "1h": "1m",
+            "2h": "5m",
             "4h": "5m",
-            "1d": "15m",
+            "12h": "15m",
+            "24h": "15m",
+            "7d": "1h",
+            "30d": "4h",
         }.get(normalized_visual_window, "5m")
         display_candle_interval_minutes = {
             "1m": 1,
             "5m": 5,
             "15m": 15,
             "1h": 60,
+            "4h": 240,
         }.get(display_candle_interval, 5)
         model3_dataset_cache_key = (
             f"liq-model3-dataset::{self.coin}::{normalized_visual_coin}::{normalized_visual_window}::{normalized_visual_exchange}"
@@ -19765,14 +19996,11 @@ class MarketRuntimeSession:
                 self._schedule_heavy_cache_warm(model3_dataset_cache_key, 20, lambda: build_model3_dataset(sync_rest_backfill=True))
                 liquidation_model3_dataset = stale_model3_dataset
             else:
-                model3_dataset_refreshing = True
-                fast_model3_dataset_cache_key = f"{model3_dataset_cache_key}::fast"
                 liquidation_model3_dataset = self._cache_get_or_build(
-                    fast_model3_dataset_cache_key,
-                    8,
-                    lambda: build_model3_dataset(sync_rest_backfill=False),
+                    model3_dataset_cache_key,
+                    20,
+                    lambda: build_model3_dataset(sync_rest_backfill=True),
                 )
-                self._schedule_heavy_cache_warm(model3_dataset_cache_key, 20, lambda: build_model3_dataset(sync_rest_backfill=True))
         selected_oi_column = f"OI {normalized_oi_rank_window} %"
         selected_price_column = f"Price {normalized_oi_rank_window} %"
 

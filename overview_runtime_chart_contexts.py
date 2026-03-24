@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -13,6 +13,78 @@ def _canonicalize_known_columns(frame: pd.DataFrame) -> pd.DataFrame:
 
 def _find_total_oi_column(frame: pd.DataFrame) -> str:
     return find_total_oi_column(frame)
+
+
+def _prune_sparse_display_rows(
+    frame: pd.DataFrame,
+    *,
+    extra_numeric_columns: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    working = _canonicalize_known_columns(frame.copy()) if isinstance(frame, pd.DataFrame) else pd.DataFrame()
+    if working.empty or "币种" not in working.columns:
+        return working
+
+    numeric_columns = [
+        "价格",
+        "5m%",
+        "30m%",
+        "1h%",
+        "4h%",
+        "24h%",
+        "24h成交额",
+        "OI总额",
+        "OI 1h(%)",
+        "OI 4h(%)",
+        "OI 24h(%)",
+        "Funding(bp)",
+        "L/S比",
+        "Spot/OI",
+        "OI变化额",
+        "24h爆仓样本额",
+        "最大偏离(%)",
+        "平均偏离(%)",
+        "Binance全市场比",
+        "Binance主动买卖比",
+        "Bybit账户比",
+        "Bybit多头占比(%)",
+        "Bybit空头占比(%)",
+        "OKX合约账户比",
+        "OKX全网账户比",
+        "OKX大户账户比",
+        "OKX大户持仓比",
+        "OKX多头占比(%)",
+        "OKX空头占比(%)",
+        "Bitget账户比",
+        "Bitget多头占比(%)",
+        "Bitget空头占比(%)",
+        "Gate账户比",
+        "Gate多头占比(%)",
+        "Gate空头占比(%)",
+        "HTX账户比",
+        "HTX多头占比(%)",
+        "HTX空头占比(%)",
+    ]
+    if extra_numeric_columns:
+        numeric_columns.extend(extra_numeric_columns)
+
+    valid_mask = pd.Series(False, index=working.index, dtype=bool)
+    for column in dict.fromkeys(numeric_columns):
+        if column not in working.columns:
+            continue
+        valid_mask = valid_mask | pd.to_numeric(working[column], errors="coerce").notna()
+
+    if "状态" in working.columns:
+        degraded_mask = working["状态"].astype(str).fillna("").str.contains("降级|代理|失败|加载", regex=True)
+        if valid_mask.any():
+            working = working[valid_mask | ~degraded_mask].reset_index(drop=True)
+        else:
+            working = working[~degraded_mask].reset_index(drop=True)
+    elif valid_mask.any():
+        working = working[valid_mask].reset_index(drop=True)
+
+    if working.empty:
+        return working
+    return working.drop_duplicates(subset=["币种"], keep="first").reset_index(drop=True)
 
 
 def build_overview_rich_chart_seed_context(
@@ -141,6 +213,7 @@ def build_overview_rich_charts_a_context(
         else pd.DataFrame()
     )
     filtered_overview = _canonicalize_known_columns(filtered_overview.copy()) if not filtered_overview.empty else pd.DataFrame()
+    filtered_overview = _prune_sparse_display_rows(filtered_overview)
     ratio_sentiment_frame = _canonicalize_known_columns(ratio_sentiment_frame.copy()) if not ratio_sentiment_frame.empty else pd.DataFrame()
 
     multicoin_sentiment_frame = pd.DataFrame()
@@ -204,6 +277,7 @@ def build_overview_rich_charts_a_context(
                 {"coin": str(row.get("币种") or "").upper().strip()}
                 for _, row in multicoin_sentiment_frame.iterrows()
             ]
+    multicoin_sentiment_frame = _prune_sparse_display_rows(multicoin_sentiment_frame)
 
     signature = {
         "coin": coin,

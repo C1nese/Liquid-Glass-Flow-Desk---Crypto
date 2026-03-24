@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from dataclasses import replace
+import copy
 from typing import Any, Dict, List, Optional, Tuple
 import re
 import time
@@ -152,6 +153,22 @@ EXCHANGE_TITLE_MAP = {
 
 _REQUEST_HEALTH_LOCK = threading.Lock()
 _REQUEST_HEALTH: Dict[str, Dict[str, Any]] = {}
+_THREAD_LOCAL_CLIENTS = threading.local()
+_FETCH_CACHE_LOCK = threading.Lock()
+_FETCH_CACHE: Dict[Tuple[Any, ...], Tuple[float, Any]] = {}
+_FETCH_CACHE_TTLS = {
+    "all_snapshots": 2.0,
+    "exchange_snapshot": 2.0,
+    "exchange_candles": 8.0,
+    "exchange_orderbook": 2.0,
+    "exchange_oi_history": 10.0,
+    "exchange_liquidations": 3.0,
+    "exchange_trades": 2.0,
+    "spot_snapshot": 2.0,
+    "spot_candles": 8.0,
+    "spot_orderbook": 2.0,
+    "spot_trades": 2.0,
+}
 _REQUEST_COOLDOWN_SECONDS = {
     "legal": 180,
     "forbidden": 90,
@@ -214,6 +231,52 @@ def interval_to_millis(interval: str) -> int:
         "1d": 86_400_000,
     }
     return mapping.get(interval, 300_000)
+
+
+def _clone_cached_payload(value: Any) -> Any:
+    try:
+        return copy.deepcopy(value)
+    except Exception:
+        return value
+
+
+def _fetch_cache_get(cache_key: Tuple[Any, ...], ttl_seconds: float) -> Any:
+    if ttl_seconds <= 0:
+        return None
+    now = time.time()
+    with _FETCH_CACHE_LOCK:
+        record = _FETCH_CACHE.get(cache_key)
+        if not record:
+            return None
+        expires_at, payload = record
+        if expires_at <= now:
+            _FETCH_CACHE.pop(cache_key, None)
+            return None
+        return _clone_cached_payload(payload)
+
+
+def _fetch_cache_set(cache_key: Tuple[Any, ...], ttl_seconds: float, payload: Any) -> Any:
+    stored_payload = _clone_cached_payload(payload)
+    with _FETCH_CACHE_LOCK:
+        _FETCH_CACHE[cache_key] = (time.time() + max(float(ttl_seconds), 0.0), stored_payload)
+    return _clone_cached_payload(stored_payload)
+
+
+def _cached_fetch(kind: str, cache_key: Tuple[Any, ...], builder) -> Any:
+    ttl_seconds = float(_FETCH_CACHE_TTLS.get(kind, 0.0) or 0.0)
+    cached = _fetch_cache_get(cache_key, ttl_seconds)
+    if cached is not None:
+        return cached
+    payload = builder()
+    return _fetch_cache_set(cache_key, ttl_seconds, payload)
+
+
+def _thread_local_client_store(store_name: str) -> Dict[Tuple[int, str], BaseClient]:
+    store = getattr(_THREAD_LOCAL_CLIENTS, store_name, None)
+    if not isinstance(store, dict):
+        store = {}
+        setattr(_THREAD_LOCAL_CLIENTS, store_name, store)
+    return store
 
 
 BITGET_CANDLE_INTERVALS = {
@@ -2368,6 +2431,26 @@ def build_clients(timeout: int = DEFAULT_TIMEOUT) -> Dict[str, BaseClient]:
     }
 
 
+def _get_shared_perp_clients(timeout: int = DEFAULT_TIMEOUT) -> Dict[str, BaseClient]:
+    store = _thread_local_client_store("perp_clients")
+    client_factories = {
+        "bybit": BybitClient,
+        "binance": BinanceClient,
+        "okx": OkxClient,
+        "hyperliquid": HyperliquidClient,
+        "bitget": BitgetPublicClient,
+    }
+    clients: Dict[str, BaseClient] = {}
+    for key, factory in client_factories.items():
+        cache_key = (int(timeout), key)
+        client = store.get(cache_key)
+        if client is None:
+            client = factory(timeout=timeout)
+            store[cache_key] = client
+        clients[key] = client
+    return clients
+
+
 def close_clients(clients: Dict[str, BaseClient]) -> None:
     for client in (clients or {}).values():
         if hasattr(client, "close"):
@@ -2378,11 +2461,14 @@ def close_clients(clients: Dict[str, BaseClient]) -> None:
 
 
 def fetch_all_snapshots(symbol_map: Dict[str, str], timeout: int = DEFAULT_TIMEOUT) -> List[ExchangeSnapshot]:
-    clients = build_clients(timeout=timeout)
-    snapshots: List[ExchangeSnapshot] = []
-    try:
+    normalized_symbol_map = {key: str(symbol_map.get(key) or "").strip().upper() for key in EXCHANGE_ORDER}
+    cache_key = ("all_snapshots", int(timeout), tuple((key, normalized_symbol_map.get(key, "")) for key in EXCHANGE_ORDER))
+
+    def _builder() -> List[ExchangeSnapshot]:
+        clients = _get_shared_perp_clients(timeout=timeout)
+        snapshots: List[ExchangeSnapshot] = []
         for key in EXCHANGE_ORDER:
-            symbol = str(symbol_map.get(key) or "").strip().upper()
+            symbol = normalized_symbol_map.get(key, "")
             if not symbol:
                 snapshots.append(
                     ExchangeSnapshot(
@@ -2395,68 +2481,80 @@ def fetch_all_snapshots(symbol_map: Dict[str, str], timeout: int = DEFAULT_TIMEO
                 continue
             snapshots.append(clients[key].fetch(symbol))
         return snapshots
-    finally:
-        close_clients(clients)
+
+    return _cached_fetch("all_snapshots", cache_key, _builder)
 
 
 def fetch_exchange_snapshot(exchange_key: str, symbol: str, timeout: int = DEFAULT_TIMEOUT) -> ExchangeSnapshot:
-    clients = build_clients(timeout=timeout)
-    try:
-        if not str(symbol or "").strip():
-            return ExchangeSnapshot(exchange=clients[exchange_key].exchange_name, symbol="", status="error", error="未上架此币")
-        return clients[exchange_key].fetch(symbol)
-    finally:
-        close_clients(clients)
+    normalized_symbol = str(symbol or "").strip().upper()
+    clients = _get_shared_perp_clients(timeout=timeout)
+    if not normalized_symbol:
+        return ExchangeSnapshot(exchange=clients[exchange_key].exchange_name, symbol="", status="error", error="未上架此币")
+    return _cached_fetch(
+        "exchange_snapshot",
+        ("exchange_snapshot", exchange_key, normalized_symbol, int(timeout)),
+        lambda: clients[exchange_key].fetch(normalized_symbol),
+    )
 
 
 def fetch_exchange_candles(exchange_key: str, symbol: str, interval: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[Candle]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_candles(symbol, interval, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_perp_clients(timeout=timeout)
+    return _cached_fetch(
+        "exchange_candles",
+        ("exchange_candles", exchange_key, normalized_symbol, str(interval), int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_candles(normalized_symbol, interval, limit),
+    )
 
 
 def fetch_exchange_orderbook(exchange_key: str, symbol: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[OrderBookLevel]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_orderbook(symbol, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_perp_clients(timeout=timeout)
+    return _cached_fetch(
+        "exchange_orderbook",
+        ("exchange_orderbook", exchange_key, normalized_symbol, int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_orderbook(normalized_symbol, limit),
+    )
 
 
 def fetch_exchange_oi_history(exchange_key: str, symbol: str, interval: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[OIPoint]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_open_interest_history(symbol, interval, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_perp_clients(timeout=timeout)
+    return _cached_fetch(
+        "exchange_oi_history",
+        ("exchange_oi_history", exchange_key, normalized_symbol, str(interval), int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_open_interest_history(normalized_symbol, interval, limit),
+    )
 
 
 def fetch_exchange_liquidations(exchange_key: str, symbol: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[LiquidationEvent]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_liquidations(symbol, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_perp_clients(timeout=timeout)
+    return _cached_fetch(
+        "exchange_liquidations",
+        ("exchange_liquidations", exchange_key, normalized_symbol, int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_liquidations(normalized_symbol, limit),
+    )
 
 
 def fetch_exchange_trades(exchange_key: str, symbol: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[TradeEvent]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_trades(symbol, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_perp_clients(timeout=timeout)
+    return _cached_fetch(
+        "exchange_trades",
+        ("exchange_trades", exchange_key, normalized_symbol, int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_trades(normalized_symbol, limit),
+    )
 
 
 def fetch_bitget_all_futures_tickers(timeout: int = DEFAULT_TIMEOUT) -> List[Dict[str, Any]]:
@@ -2900,46 +2998,72 @@ def build_spot_clients(timeout: int = DEFAULT_TIMEOUT) -> Dict[str, BaseClient]:
     }
 
 
+def _get_shared_spot_clients(timeout: int = DEFAULT_TIMEOUT) -> Dict[str, BaseClient]:
+    store = _thread_local_client_store("spot_clients")
+    client_factories = {
+        "binance": BinanceSpotClient,
+        "bybit": BybitSpotClient,
+        "okx": OkxSpotClient,
+    }
+    clients: Dict[str, BaseClient] = {}
+    for key, factory in client_factories.items():
+        cache_key = (int(timeout), key)
+        client = store.get(cache_key)
+        if client is None:
+            client = factory(timeout=timeout)
+            store[cache_key] = client
+        clients[key] = client
+    return clients
+
+
 def fetch_spot_snapshot(exchange_key: str, symbol: str, timeout: int = DEFAULT_TIMEOUT) -> SpotSnapshot:
-    clients = build_spot_clients(timeout=timeout)
-    try:
-        if not str(symbol or "").strip():
-            return SpotSnapshot(exchange=clients[exchange_key].exchange_name, symbol="", status="error", error="未上架此币")
-        return clients[exchange_key].fetch(symbol)
-    finally:
-        close_clients(clients)
+    normalized_symbol = str(symbol or "").strip().upper()
+    clients = _get_shared_spot_clients(timeout=timeout)
+    if not normalized_symbol:
+        return SpotSnapshot(exchange=clients[exchange_key].exchange_name, symbol="", status="error", error="未上架此币")
+    return _cached_fetch(
+        "spot_snapshot",
+        ("spot_snapshot", exchange_key, normalized_symbol, int(timeout)),
+        lambda: clients[exchange_key].fetch(normalized_symbol),
+    )
 
 
 def fetch_spot_candles(exchange_key: str, symbol: str, interval: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[Candle]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_spot_clients(timeout=timeout)
-    try:
-        client = clients[exchange_key]
-        return client.fetch_candles(symbol, interval, limit)  # type: ignore[attr-defined]
-    finally:
-        close_clients(clients)
+    clients = _get_shared_spot_clients(timeout=timeout)
+    client = clients[exchange_key]
+    return _cached_fetch(
+        "spot_candles",
+        ("spot_candles", exchange_key, normalized_symbol, str(interval), int(limit), int(timeout)),
+        lambda: client.fetch_candles(normalized_symbol, interval, limit),  # type: ignore[attr-defined]
+    )
 
 
 def fetch_spot_orderbook(exchange_key: str, symbol: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[OrderBookLevel]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_spot_clients(timeout=timeout)
-    try:
-        return clients[exchange_key].fetch_orderbook(symbol, limit)
-    finally:
-        close_clients(clients)
+    clients = _get_shared_spot_clients(timeout=timeout)
+    return _cached_fetch(
+        "spot_orderbook",
+        ("spot_orderbook", exchange_key, normalized_symbol, int(limit), int(timeout)),
+        lambda: clients[exchange_key].fetch_orderbook(normalized_symbol, limit),
+    )
 
 
 def fetch_spot_trades(exchange_key: str, symbol: str, limit: int, timeout: int = DEFAULT_TIMEOUT) -> List[TradeEvent]:
-    if not str(symbol or "").strip():
+    normalized_symbol = str(symbol or "").strip().upper()
+    if not normalized_symbol:
         return []
-    clients = build_spot_clients(timeout=timeout)
-    try:
-        client = clients[exchange_key]
-        return client.fetch_trades(symbol, limit)  # type: ignore[attr-defined]
-    finally:
-        close_clients(clients)
+    clients = _get_shared_spot_clients(timeout=timeout)
+    client = clients[exchange_key]
+    return _cached_fetch(
+        "spot_trades",
+        ("spot_trades", exchange_key, normalized_symbol, int(limit), int(timeout)),
+        lambda: client.fetch_trades(normalized_symbol, limit),  # type: ignore[attr-defined]
+    )
 
 
 def snapshots_to_rows(snapshots: List[ExchangeSnapshot]):
