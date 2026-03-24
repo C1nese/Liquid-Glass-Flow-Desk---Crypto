@@ -1,5 +1,10 @@
 # Liquid Glass Flow Desk
 
+
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/fba53421-f912-4b8d-b582-61a36c2bff89" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/a4f5451b-0d07-425c-9484-0f22c0737dd1" />
+<img width="1920" height="925" alt="image" src="https://github.com/user-attachments/assets/b3d98655-8c86-4c16-91f3-d93d4dac1303" />
+吗的，其他的懒得截图了。自己看去吧
 一个面向加密市场研究、监控与交易观察的本地终端，聚合多交易所现货 / 合约数据，并提供 OI、Funding、爆仓、盘口、逐笔成交、多空情绪、预警与历史回放能力。
 
 当前主线架构：
@@ -503,10 +508,12 @@ node --check web/app_views.js
 
 本仓库更偏向个人研究终端 / 本地工作台，不构成投资建议。
 
-如果你准备继续扩展本项目，推荐下一步补齐：
+This project is proprietary and is provided for viewing and evaluation only. No part of this repository may be copied, modified, distributed, sublicensed, sold, or used for commercial purposes without prior written permission from the author.
 
-- `docs/images/` 正式截图
-- 环境变量示例文件
-- 部署脚本
-- API 参数手册
-- 交易所口径说明
+If you need a commercial license, please contact me.
+
+授权说明 本项目及其全部代码、设计和内容版权归作者所有，保留所有权利。
+
+未经作者事先书面许可，任何人不得对本项目进行：
+
+商业使用 复制分发 修改后发布 二次售卖 集成到付费产品或服务中 如需商业授权，请联系作者。
