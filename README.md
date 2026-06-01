@@ -506,6 +506,13 @@ node --check web/app_views.js
 
 ## 许可与说明
 
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 开源发布。
+Copyright (c) 2025 C1nese
+
+> 本项目仅供研究与学习用途，不构成任何投资建议。
+
 MIT License
 
 Copyright (c) 2025 C1nese
