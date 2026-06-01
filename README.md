@@ -506,14 +506,27 @@ node --check web/app_views.js
 
 ## 许可与说明
 
-本仓库更偏向个人研究终端 / 本地工作台，不构成投资建议。
+MIT License
 
-This project is proprietary and is provided for viewing and evaluation only. No part of this repository may be copied, modified, distributed, sublicensed, sold, or used for commercial purposes without prior written permission from the author.
+Copyright (c) 2025 C1nese
 
-If you need a commercial license, please contact me.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-授权说明 本项目及其全部代码、设计和内容版权归作者所有，保留所有权利。
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 未经作者事先书面许可，任何人不得对本项目进行：
 
 商业使用 复制分发 修改后发布 二次售卖 集成到付费产品或服务中 如需商业授权，请联系作者。
